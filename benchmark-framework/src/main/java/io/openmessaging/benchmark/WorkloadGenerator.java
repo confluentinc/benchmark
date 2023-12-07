@@ -1,40 +1,23 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.openmessaging.benchmark;
 
-import io.openmessaging.benchmark.utils.RandomGenerator;
-import java.io.IOException;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
-import org.apache.commons.lang.ArrayUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.openmessaging.benchmark.utils.PaddingDecimalFormat;
+import io.openmessaging.benchmark.utils.RandomGenerator;
 import io.openmessaging.benchmark.utils.Timer;
 import io.openmessaging.benchmark.utils.payload.FilePayloadReader;
 import io.openmessaging.benchmark.utils.payload.PayloadReader;
@@ -46,6 +29,18 @@ import io.openmessaging.benchmark.worker.commands.PeriodStats;
 import io.openmessaging.benchmark.worker.commands.ProducerWorkAssignment;
 import io.openmessaging.benchmark.worker.commands.TopicSubscription;
 import io.openmessaging.benchmark.worker.commands.TopicsInfo;
+import java.io.IOException;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.ArrayUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WorkloadGenerator implements AutoCloseable {
 
@@ -53,8 +48,8 @@ public class WorkloadGenerator implements AutoCloseable {
     private final Workload workload;
     private final Worker worker;
 
-    private final ExecutorService executor = Executors
-            .newCachedThreadPool(new DefaultThreadFactory("messaging-benchmark"));
+    private final ExecutorService executor =
+            Executors.newCachedThreadPool(new DefaultThreadFactory("messaging-benchmark"));
 
     private volatile boolean runCompleted = false;
     private volatile boolean needToWaitForBacklogDraining = false;
@@ -67,13 +62,15 @@ public class WorkloadGenerator implements AutoCloseable {
         this.worker = worker;
 
         if (workload.consumerBacklogSizeGB > 0 && workload.producerRate == 0) {
-            throw new IllegalArgumentException("Cannot probe producer sustainable rate when building backlog");
+            throw new IllegalArgumentException(
+                    "Cannot probe producer sustainable rate when building backlog");
         }
     }
 
     public TestResult run() throws Exception {
         Timer timer = new Timer();
-        List<String> topics = worker.createTopics(new TopicsInfo(workload.topics, workload.partitionsPerTopic));
+        List<String> topics =
+                worker.createTopics(new TopicsInfo(workload.topics, workload.partitionsPerTopic));
         log.info("Created {} topics in {} ms", topics.size(), timer.elapsedMillis());
 
         createConsumers(topics);
@@ -87,14 +84,15 @@ public class WorkloadGenerator implements AutoCloseable {
             // Producer rate is 0 and we need to discover the sustainable rate
             targetPublishRate = 10000;
 
-            executor.execute(() -> {
-                // Run background controller to adjust rate
-                try {
-                    findMaximumSustainableRate(targetPublishRate);
-                } catch (IOException e) {
-                    log.warn("Failure in finding max sustainable rate", e);
-                }
-            });
+            executor.execute(
+                    () -> {
+                        // Run background controller to adjust rate
+                        try {
+                            findMaximumSustainableRate(targetPublishRate);
+                        } catch (IOException e) {
+                            log.warn("Failure in finding max sustainable rate", e);
+                        }
+                    });
         }
 
         final PayloadReader payloadReader = new FilePayloadReader(workload.messageSize);
@@ -104,43 +102,43 @@ public class WorkloadGenerator implements AutoCloseable {
         producerWorkAssignment.publishRate = targetPublishRate;
         producerWorkAssignment.payloadData = new ArrayList<>();
 
-        if(workload.useRandomizedPayloads) {
+        if (workload.useRandomizedPayloads) {
             // create messages that are part random and part zeros
             // better for testing effects of compression
             Random r = new Random();
-            int randomBytes = (int)(workload.messageSize * workload.randomBytesRatio);
+            int randomBytes = (int) (workload.messageSize * workload.randomBytesRatio);
             int zerodBytes = workload.messageSize - randomBytes;
-            for(int i = 0; i<workload.randomizedPayloadPoolSize; i++) {
+            for (int i = 0; i < workload.randomizedPayloadPoolSize; i++) {
                 byte[] randArray = new byte[randomBytes];
                 r.nextBytes(randArray);
                 byte[] zerodArray = new byte[zerodBytes];
                 byte[] combined = ArrayUtils.addAll(randArray, zerodArray);
                 producerWorkAssignment.payloadData.add(combined);
             }
-        }
-        else {
+        } else {
             producerWorkAssignment.payloadData.add(payloadReader.load(workload.payloadFile));
         }
 
-
-        log.info("----- Starting warm-up traffic ------");
-
         worker.startLoad(producerWorkAssignment);
 
-        printAndCollectStats(1, TimeUnit.MINUTES);
+        if (workload.warmupDurationMinutes > 0) {
+            log.info("----- Starting warm-up traffic ({}m) ------", workload.warmupDurationMinutes);
+            printAndCollectStats(workload.warmupDurationMinutes, TimeUnit.MINUTES);
+        }
 
         if (workload.consumerBacklogSizeGB > 0) {
-            executor.execute(() -> {
-                try {
-                    buildAndDrainBacklog(topics);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            });
+            executor.execute(
+                    () -> {
+                        try {
+                            buildAndDrainBacklog(workload.testDurationMinutes);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    });
         }
 
         worker.resetStats();
-        log.info("----- Starting benchmark traffic ------");
+        log.info("----- Starting benchmark traffic ({}m)------", workload.testDurationMinutes);
 
         TestResult result = printAndCollectStats(workload.testDurationMinutes, TimeUnit.MINUTES);
         runCompleted = true;
@@ -151,7 +149,8 @@ public class WorkloadGenerator implements AutoCloseable {
 
     private void ensureTopicsAreReady() throws IOException {
         log.info("Waiting for consumers to be ready");
-        // This is work around the fact that there's no way to have a consumer ready in Kafka without first publishing
+        // This is work around the fact that there's no way to have a consumer ready in Kafka without
+        // first publishing
         // some message on the topic, which will then trigger the partitions assignment to the consumers
 
         int expectedMessages = workload.topics * workload.subscriptionsPerTopic;
@@ -159,12 +158,18 @@ public class WorkloadGenerator implements AutoCloseable {
         // In this case we just publish 1 message and then wait for consumers to receive the data
         worker.probeProducers();
 
-	while (true) {
+        long start = System.currentTimeMillis();
+        long end = start + 60 * 1000;
+        while (System.currentTimeMillis() < end) {
             CountersStats stats = worker.getCountersStats();
-	    
+
+            log.info(
+                    "Waiting for topics to be ready -- Sent: {}, Received: {}",
+                    stats.messagesSent,
+                    stats.messagesReceived);
             if (stats.messagesReceived < expectedMessages) {
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(2_000);
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -173,26 +178,26 @@ public class WorkloadGenerator implements AutoCloseable {
             }
         }
 
-        log.info("All consumers are ready");
+        if (System.currentTimeMillis() >= end) {
+            throw new RuntimeException("Timed out waiting for consumers to be ready");
+        } else {
+            log.info("All consumers are ready");
+        }
     }
 
     /**
-     * Adjust the publish rate to a level that is sustainable, meaning that we can consume all the messages that are
-     * being produced
+     * Adjust the publish rate to a level that is sustainable, meaning that we can consume all the
+     * messages that are being produced.
+     *
+     * @param currentRate
      */
     private void findMaximumSustainableRate(double currentRate) throws IOException {
-        double maxRate = Double.MAX_VALUE; // Discovered max sustainable rate
-        double minRate = 0.1;
-
         CountersStats stats = worker.getCountersStats();
-
-        long localTotalMessagesSentCounter = stats.messagesSent;
-        long localTotalMessagesReceivedCounter = stats.messagesReceived;
 
         int controlPeriodMillis = 3000;
         long lastControlTimestamp = System.nanoTime();
 
-        int successfulPeriods = 0;
+        RateController rateController = new RateController();
 
         while (!runCompleted) {
             // Check every few seconds and adjust the rate
@@ -205,84 +210,13 @@ public class WorkloadGenerator implements AutoCloseable {
             // Consider multiple copies when using multiple subscriptions
             stats = worker.getCountersStats();
             long currentTime = System.nanoTime();
-            long totalMessagesSent = stats.messagesSent;
-            long totalMessagesReceived = stats.messagesReceived;
-            long messagesPublishedInPeriod = totalMessagesSent - localTotalMessagesSentCounter;
-            long messagesReceivedInPeriod = totalMessagesReceived - localTotalMessagesReceivedCounter;
-            double publishRateInLastPeriod = messagesPublishedInPeriod / (double) (currentTime - lastControlTimestamp)
-                    * TimeUnit.SECONDS.toNanos(1);
-            double receiveRateInLastPeriod = messagesReceivedInPeriod / (double) (currentTime - lastControlTimestamp)
-                    * TimeUnit.SECONDS.toNanos(1);
+            long periodNanos = currentTime - lastControlTimestamp;
 
-            if (log.isDebugEnabled()) {
-                log.debug(
-                        "total-send: {} -- total-received: {} -- int-sent: {} -- int-received: {} -- sent-rate: {} -- received-rate: {}",
-                        totalMessagesSent, totalMessagesReceived, messagesPublishedInPeriod, messagesReceivedInPeriod,
-                        publishRateInLastPeriod, receiveRateInLastPeriod);
-            }
-
-            localTotalMessagesSentCounter = totalMessagesSent;
-            localTotalMessagesReceivedCounter = totalMessagesReceived;
             lastControlTimestamp = currentTime;
 
-            if (log.isDebugEnabled()) {
-                log.debug("Current rate: {} -- Publish rate {} -- Consume Rate: {} -- min-rate: {} -- max-rate: {}",
-                        dec.format(currentRate), dec.format(publishRateInLastPeriod),
-                        dec.format(receiveRateInLastPeriod), dec.format(minRate), dec.format(maxRate));
-            }
-
-            if (publishRateInLastPeriod < currentRate * 0.95) {
-                // Producer is not able to publish as fast as requested
-                maxRate = currentRate * 1.1;
-                currentRate = minRate + (currentRate - minRate) / 2;
-
-                log.debug("Publishers are not meeting requested rate. reducing to {}", currentRate);
-            } else if (receiveRateInLastPeriod < publishRateInLastPeriod * 0.98) {
-                // If the consumers are building backlog, we should slow down publish rate
-                maxRate = currentRate;
-                currentRate = minRate + (currentRate - minRate) / 2;
-                log.debug("Consumers are not meeting requested rate. reducing to {}", currentRate);
-
-                // Slows the publishes to let the consumer time to absorb the backlog
-                worker.adjustPublishRate(minRate / 10);
-                while (true) {
-                    stats = worker.getCountersStats();
-                    long backlog = workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
-                    if (backlog < 1000) {
-                        break;
-                    }
-
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        return;
-                    }
-                }
-
-                log.debug("Resuming load at reduced rate");
-                worker.adjustPublishRate(currentRate);
-
-                try {
-                    // Wait some more time for the publish rate to catch up
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    return;
-                }
-
-                stats = worker.getCountersStats();
-                localTotalMessagesSentCounter = stats.messagesSent;
-                localTotalMessagesReceivedCounter = stats.messagesReceived;
-
-            } else if (currentRate < maxRate) {
-                minRate = currentRate;
-                currentRate = Math.min(currentRate * 2, maxRate);
-                log.debug("No bottleneck found, increasing the rate to {}", currentRate);
-            } else if (++successfulPeriods > 3) {
-                minRate = currentRate * 0.95;
-                maxRate = currentRate * 1.05;
-                successfulPeriods = 0;
-            }
-
+            currentRate =
+                    rateController.nextRate(
+                            currentRate, periodNanos, stats.messagesSent, stats.messagesReceived);
             worker.adjustPublishRate(currentRate);
         }
     }
@@ -296,12 +230,13 @@ public class WorkloadGenerator implements AutoCloseable {
     private void createConsumers(List<String> topics) throws IOException {
         ConsumerAssignment consumerAssignment = new ConsumerAssignment();
 
-        for(String topic: topics){
-            for(int i = 0; i < workload.subscriptionsPerTopic; i++){
-                String subscriptionName = String.format("sub-%03d-%s", i, RandomGenerator.getRandomString());
+        for (String topic : topics) {
+            for (int i = 0; i < workload.subscriptionsPerTopic; i++) {
+                String subscriptionName =
+                        String.format("sub-%03d-%s", i, RandomGenerator.getRandomString());
                 for (int j = 0; j < workload.consumerPerSubscription; j++) {
-                    consumerAssignment.topicsSubscriptions
-                        .add(new TopicSubscription(topic, subscriptionName));
+                    consumerAssignment.topicsSubscriptions.add(
+                            new TopicSubscription(topic, subscriptionName));
                 }
             }
         }
@@ -311,7 +246,10 @@ public class WorkloadGenerator implements AutoCloseable {
         Timer timer = new Timer();
 
         worker.createConsumers(consumerAssignment);
-        log.info("Created {} consumers in {} ms", consumerAssignment.topicsSubscriptions.size(), timer.elapsedMillis());
+        log.info(
+                "Created {} consumers in {} ms",
+                consumerAssignment.topicsSubscriptions.size(),
+                timer.elapsedMillis());
     }
 
     private void createProducers(List<String> topics) throws IOException {
@@ -319,7 +257,7 @@ public class WorkloadGenerator implements AutoCloseable {
 
         // Add the topic multiple times, one for each producer
         for (int i = 0; i < workload.producersPerTopic; i++) {
-            topics.forEach(fullListOfTopics::add);
+            fullListOfTopics.addAll(topics);
         }
 
         Collections.shuffle(fullListOfTopics);
@@ -330,7 +268,8 @@ public class WorkloadGenerator implements AutoCloseable {
         log.info("Created {} producers in {} ms", fullListOfTopics.size(), timer.elapsedMillis());
     }
 
-    private void buildAndDrainBacklog(List<String> topics) throws IOException {
+    private void buildAndDrainBacklog(int testDurationMinutes) throws IOException {
+        Timer timer = new Timer();
         log.info("Stopping all consumers to build backlog");
         worker.pauseConsumers();
 
@@ -340,8 +279,9 @@ public class WorkloadGenerator implements AutoCloseable {
 
         while (true) {
             CountersStats stats = worker.getCountersStats();
-            long currentBacklogSize = (workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived)
-                    * workload.messageSize;
+            long currentBacklogSize =
+                    (workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived)
+                            * workload.messageSize;
 
             if (currentBacklogSize >= requestedBacklogSize) {
                 break;
@@ -354,17 +294,29 @@ public class WorkloadGenerator implements AutoCloseable {
             }
         }
 
+        log.info("--- Completed backlog build in {} s ---", timer.elapsedSeconds());
+        timer = new Timer();
         log.info("--- Start draining backlog ---");
 
         worker.resumeConsumers();
 
-        final long minBacklog = 1000;
+        long backlogMessageCapacity = requestedBacklogSize / workload.messageSize;
+        long backlogEmptyLevel = (long) ((1.0 - workload.backlogDrainRatio) * backlogMessageCapacity);
+        final long minBacklog = Math.max(1000L, backlogEmptyLevel);
 
         while (true) {
             CountersStats stats = worker.getCountersStats();
-            long currentBacklog = workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
+            long currentBacklog =
+                    workload.subscriptionsPerTopic * stats.messagesSent - stats.messagesReceived;
             if (currentBacklog <= minBacklog) {
-                log.info("--- Completed backlog draining ---");
+                log.info("--- Completed backlog draining in {} s ---", timer.elapsedSeconds());
+
+                try {
+                    Thread.sleep(MINUTES.toMillis(testDurationMinutes));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+
                 needToWaitForBacklogDraining = false;
                 return;
             }
@@ -377,6 +329,7 @@ public class WorkloadGenerator implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings({"checkstyle:LineLength", "checkstyle:MethodLength"})
     private TestResult printAndCollectStats(long testDurations, TimeUnit unit) throws IOException {
         long startTime = System.nanoTime();
 
@@ -408,25 +361,38 @@ public class WorkloadGenerator implements AutoCloseable {
 
             double publishRate = stats.messagesSent / elapsed;
             double publishThroughput = stats.bytesSent / elapsed / 1024 / 1024;
+            double errorRate = stats.messageSendErrors / elapsed;
 
             double consumeRate = stats.messagesReceived / elapsed;
             double consumeThroughput = stats.bytesReceived / elapsed / 1024 / 1024;
 
-            long currentBacklog = workload.subscriptionsPerTopic * stats.totalMessagesSent
-                    - stats.totalMessagesReceived;
+            long currentBacklog =
+                    Math.max(
+                            0L,
+                            workload.subscriptionsPerTopic * stats.totalMessagesSent
+                                    - stats.totalMessagesReceived);
 
             log.info(
-                    "Pub rate {} msg/s / {} MB/s | Cons rate {} msg/s / {} MB/s | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
-                    rateFormat.format(publishRate), throughputFormat.format(publishThroughput),
-                    rateFormat.format(consumeRate), throughputFormat.format(consumeThroughput),
+                    "Pub rate {} msg/s / {} MB/s | Pub err {} err/s | Cons rate {} msg/s / {} MB/s | Backlog: {} K | Pub Latency (ms) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {} | Pub Delay Latency (us) avg: {} - 50%: {} - 99%: {} - 99.9%: {} - Max: {}",
+                    rateFormat.format(publishRate),
+                    throughputFormat.format(publishThroughput),
+                    rateFormat.format(errorRate),
+                    rateFormat.format(consumeRate),
+                    throughputFormat.format(consumeThroughput),
                     dec.format(currentBacklog / 1000.0), //
                     dec.format(microsToMillis(stats.publishLatency.getMean())),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(50))),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(99))),
                     dec.format(microsToMillis(stats.publishLatency.getValueAtPercentile(99.9))),
-                    throughputFormat.format(microsToMillis(stats.publishLatency.getMaxValue())));
+                    throughputFormat.format(microsToMillis(stats.publishLatency.getMaxValue())),
+                    dec.format(stats.publishDelayLatency.getMean()),
+                    dec.format(stats.publishDelayLatency.getValueAtPercentile(50)),
+                    dec.format(stats.publishDelayLatency.getValueAtPercentile(99)),
+                    dec.format(stats.publishDelayLatency.getValueAtPercentile(99.9)),
+                    throughputFormat.format(stats.publishDelayLatency.getMaxValue()));
 
             result.publishRate.add(publishRate);
+            result.publishErrorRate.add(errorRate);
             result.consumeRate.add(consumeRate);
             result.backlog.add(currentBacklog);
             result.publishLatencyAvg.add(microsToMillis(stats.publishLatency.getMean()));
@@ -434,58 +400,119 @@ public class WorkloadGenerator implements AutoCloseable {
             result.publishLatency75pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(75)));
             result.publishLatency95pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(95)));
             result.publishLatency99pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(99)));
-            result.publishLatency999pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(99.9)));
-            result.publishLatency9999pct.add(microsToMillis(stats.publishLatency.getValueAtPercentile(99.99)));
+            result.publishLatency999pct.add(
+                    microsToMillis(stats.publishLatency.getValueAtPercentile(99.9)));
+            result.publishLatency9999pct.add(
+                    microsToMillis(stats.publishLatency.getValueAtPercentile(99.99)));
             result.publishLatencyMax.add(microsToMillis(stats.publishLatency.getMaxValue()));
 
+            result.publishDelayLatencyAvg.add(stats.publishDelayLatency.getMean());
+            result.publishDelayLatency50pct.add(stats.publishDelayLatency.getValueAtPercentile(50));
+            result.publishDelayLatency75pct.add(stats.publishDelayLatency.getValueAtPercentile(75));
+            result.publishDelayLatency95pct.add(stats.publishDelayLatency.getValueAtPercentile(95));
+            result.publishDelayLatency99pct.add(stats.publishDelayLatency.getValueAtPercentile(99));
+            result.publishDelayLatency999pct.add(stats.publishDelayLatency.getValueAtPercentile(99.9));
+            result.publishDelayLatency9999pct.add(stats.publishDelayLatency.getValueAtPercentile(99.99));
+            result.publishDelayLatencyMax.add(stats.publishDelayLatency.getMaxValue());
+
             result.endToEndLatencyAvg.add(microsToMillis(stats.endToEndLatency.getMean()));
-            result.endToEndLatency50pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(50)));
-            result.endToEndLatency75pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(75)));
-            result.endToEndLatency95pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(95)));
-            result.endToEndLatency99pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99)));
-            result.endToEndLatency999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9)));
-            result.endToEndLatency9999pct.add(microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.99)));
+            result.endToEndLatency50pct.add(
+                    microsToMillis(stats.endToEndLatency.getValueAtPercentile(50)));
+            result.endToEndLatency75pct.add(
+                    microsToMillis(stats.endToEndLatency.getValueAtPercentile(75)));
+            result.endToEndLatency95pct.add(
+                    microsToMillis(stats.endToEndLatency.getValueAtPercentile(95)));
+            result.endToEndLatency99pct.add(
+                    microsToMillis(stats.endToEndLatency.getValueAtPercentile(99)));
+            result.endToEndLatency999pct.add(
+                    microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.9)));
+            result.endToEndLatency9999pct.add(
+                    microsToMillis(stats.endToEndLatency.getValueAtPercentile(99.99)));
             result.endToEndLatencyMax.add(microsToMillis(stats.endToEndLatency.getMaxValue()));
 
             if (now >= testEndTime && !needToWaitForBacklogDraining) {
                 CumulativeLatencies agg = worker.getCumulativeLatencies();
                 log.info(
-                        "----- Aggregated Pub Latency (ms) avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {}",
+                        "----- Aggregated Pub Latency (ms) avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {} | Pub Delay (us)  avg: {} - 50%: {} - 95%: {} - 99%: {} - 99.9%: {} - 99.99%: {} - Max: {}",
                         dec.format(agg.publishLatency.getMean() / 1000.0),
                         dec.format(agg.publishLatency.getValueAtPercentile(50) / 1000.0),
                         dec.format(agg.publishLatency.getValueAtPercentile(95) / 1000.0),
                         dec.format(agg.publishLatency.getValueAtPercentile(99) / 1000.0),
                         dec.format(agg.publishLatency.getValueAtPercentile(99.9) / 1000.0),
                         dec.format(agg.publishLatency.getValueAtPercentile(99.99) / 1000.0),
-                        throughputFormat.format(agg.publishLatency.getMaxValue() / 1000.0));
+                        throughputFormat.format(agg.publishLatency.getMaxValue() / 1000.0),
+                        dec.format(agg.publishDelayLatency.getMean()),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(50)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(95)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(99)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(99.9)),
+                        dec.format(agg.publishDelayLatency.getValueAtPercentile(99.99)),
+                        throughputFormat.format(agg.publishDelayLatency.getMaxValue()));
 
                 result.aggregatedPublishLatencyAvg = agg.publishLatency.getMean() / 1000.0;
                 result.aggregatedPublishLatency50pct = agg.publishLatency.getValueAtPercentile(50) / 1000.0;
                 result.aggregatedPublishLatency75pct = agg.publishLatency.getValueAtPercentile(75) / 1000.0;
                 result.aggregatedPublishLatency95pct = agg.publishLatency.getValueAtPercentile(95) / 1000.0;
                 result.aggregatedPublishLatency99pct = agg.publishLatency.getValueAtPercentile(99) / 1000.0;
-                result.aggregatedPublishLatency999pct = agg.publishLatency.getValueAtPercentile(99.9) / 1000.0;
-                result.aggregatedPublishLatency9999pct = agg.publishLatency.getValueAtPercentile(99.99) / 1000.0;
+                result.aggregatedPublishLatency999pct =
+                        agg.publishLatency.getValueAtPercentile(99.9) / 1000.0;
+                result.aggregatedPublishLatency9999pct =
+                        agg.publishLatency.getValueAtPercentile(99.99) / 1000.0;
                 result.aggregatedPublishLatencyMax = agg.publishLatency.getMaxValue() / 1000.0;
 
-                result.aggregatedEndToEndLatencyAvg = agg.endToEndLatency.getMean()  / 1000.0;
-                result.aggregatedEndToEndLatency50pct = agg.endToEndLatency.getValueAtPercentile(50)  / 1000.0;
-                result.aggregatedEndToEndLatency75pct = agg.endToEndLatency.getValueAtPercentile(75)  / 1000.0;
-                result.aggregatedEndToEndLatency95pct = agg.endToEndLatency.getValueAtPercentile(95)  / 1000.0;
-                result.aggregatedEndToEndLatency99pct = agg.endToEndLatency.getValueAtPercentile(99)  / 1000.0;
-                result.aggregatedEndToEndLatency999pct = agg.endToEndLatency.getValueAtPercentile(99.9)  / 1000.0;
-                result.aggregatedEndToEndLatency9999pct = agg.endToEndLatency.getValueAtPercentile(99.99)  / 1000.0;
-                result.aggregatedEndToEndLatencyMax = agg.endToEndLatency.getMaxValue()  / 1000.0;
+                result.aggregatedPublishDelayLatencyAvg = agg.publishDelayLatency.getMean();
+                result.aggregatedPublishDelayLatency50pct =
+                        agg.publishDelayLatency.getValueAtPercentile(50);
+                result.aggregatedPublishDelayLatency75pct =
+                        agg.publishDelayLatency.getValueAtPercentile(75);
+                result.aggregatedPublishDelayLatency95pct =
+                        agg.publishDelayLatency.getValueAtPercentile(95);
+                result.aggregatedPublishDelayLatency99pct =
+                        agg.publishDelayLatency.getValueAtPercentile(99);
+                result.aggregatedPublishDelayLatency999pct =
+                        agg.publishDelayLatency.getValueAtPercentile(99.9);
+                result.aggregatedPublishDelayLatency9999pct =
+                        agg.publishDelayLatency.getValueAtPercentile(99.99);
+                result.aggregatedPublishDelayLatencyMax = agg.publishDelayLatency.getMaxValue();
 
-                agg.publishLatency.percentiles(100).forEach(value -> {
-                    result.aggregatedPublishLatencyQuantiles.put(value.getPercentile(),
-                            value.getValueIteratedTo() / 1000.0);
-                });
+                result.aggregatedEndToEndLatencyAvg = agg.endToEndLatency.getMean() / 1000.0;
+                result.aggregatedEndToEndLatency50pct =
+                        agg.endToEndLatency.getValueAtPercentile(50) / 1000.0;
+                result.aggregatedEndToEndLatency75pct =
+                        agg.endToEndLatency.getValueAtPercentile(75) / 1000.0;
+                result.aggregatedEndToEndLatency95pct =
+                        agg.endToEndLatency.getValueAtPercentile(95) / 1000.0;
+                result.aggregatedEndToEndLatency99pct =
+                        agg.endToEndLatency.getValueAtPercentile(99) / 1000.0;
+                result.aggregatedEndToEndLatency999pct =
+                        agg.endToEndLatency.getValueAtPercentile(99.9) / 1000.0;
+                result.aggregatedEndToEndLatency9999pct =
+                        agg.endToEndLatency.getValueAtPercentile(99.99) / 1000.0;
+                result.aggregatedEndToEndLatencyMax = agg.endToEndLatency.getMaxValue() / 1000.0;
 
-                agg.endToEndLatency.percentiles(100).forEach(value -> {
-                    result.aggregatedEndToEndLatencyQuantiles.put(value.getPercentile(),
-                            microsToMillis(value.getValueIteratedTo()));
-                });
+                agg.publishLatency
+                        .percentiles(100)
+                        .forEach(
+                                value -> {
+                                    result.aggregatedPublishLatencyQuantiles.put(
+                                            value.getPercentile(), value.getValueIteratedTo() / 1000.0);
+                                });
+
+                agg.publishDelayLatency
+                        .percentiles(100)
+                        .forEach(
+                                value -> {
+                                    result.aggregatedPublishDelayLatencyQuantiles.put(
+                                            value.getPercentile(), value.getValueIteratedTo());
+                                });
+
+                agg.endToEndLatency
+                        .percentiles(100)
+                        .forEach(
+                                value -> {
+                                    result.aggregatedEndToEndLatencyQuantiles.put(
+                                            value.getPercentile(), microsToMillis(value.getValueIteratedTo()));
+                                });
 
                 break;
             }

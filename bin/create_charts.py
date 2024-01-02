@@ -1,21 +1,16 @@
 #!/usr/bin/env python
 #
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#   http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 #
 
 
@@ -43,9 +38,17 @@ def create_charts(test_results):
                      y_label='Latency (ms)',
                      time_series=[(x['driver'], x['publishLatency99pct']) for x in results])
 
+        create_chart(workload, 'Publish Delay latency 99pct',
+                     y_label='Latency (us)',
+                     time_series=[(x['driver'], x['publishDelayLatency99pct']) for x in results])
+
         create_chart(workload, 'Publish rate',
                      y_label='Rate (msg/s)',
                      time_series=[(x['driver'], x['publishRate']) for x in results])
+
+        create_chart(workload, 'Publish Error rate',
+                     y_label='Rate (err/s)',
+                     time_series=[(x['driver'], x['publishErrorRate']) for x in results])
 
         create_chart(workload, 'End To End Latency 95pct',
                      y_label='Latency (ms)',
@@ -62,6 +65,10 @@ def create_charts(test_results):
         create_quantile_chart(workload, 'Publish Latency Quantiles',
                               y_label='Latency (ms)',
                               time_series=[(x['driver'], x['aggregatedPublishLatencyQuantiles']) for x in results])
+
+        create_quantile_chart(workload, 'Publish Delay Latency Quantiles',
+                              y_label='Latency (us)',
+                              time_series=[(x['driver'], x['aggregatedPublishDelayLatencyQuantiles']) for x in results])
 
         create_quantile_chart(workload, 'End To End Latency Quantiles',
                               y_label='Latency (ms)',

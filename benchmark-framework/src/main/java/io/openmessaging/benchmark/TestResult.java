@@ -1,22 +1,18 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.openmessaging.benchmark;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +29,7 @@ public class TestResult {
     public int consumersPerTopic;
 
     public List<Double> publishRate = new ArrayList<>();
+    public List<Double> publishErrorRate = new ArrayList<>();
     public List<Double> consumeRate = new ArrayList<>();
     public List<Long> backlog = new ArrayList<>();
 
@@ -45,6 +42,15 @@ public class TestResult {
     public List<Double> publishLatency9999pct = new ArrayList<>();
     public List<Double> publishLatencyMax = new ArrayList<>();
 
+    public List<Double> publishDelayLatencyAvg = new ArrayList<>();
+    public List<Long> publishDelayLatency50pct = new ArrayList<>();
+    public List<Long> publishDelayLatency75pct = new ArrayList<>();
+    public List<Long> publishDelayLatency95pct = new ArrayList<>();
+    public List<Long> publishDelayLatency99pct = new ArrayList<>();
+    public List<Long> publishDelayLatency999pct = new ArrayList<>();
+    public List<Long> publishDelayLatency9999pct = new ArrayList<>();
+    public List<Long> publishDelayLatencyMax = new ArrayList<>();
+
     public double aggregatedPublishLatencyAvg;
     public double aggregatedPublishLatency50pct;
     public double aggregatedPublishLatency75pct;
@@ -54,7 +60,18 @@ public class TestResult {
     public double aggregatedPublishLatency9999pct;
     public double aggregatedPublishLatencyMax;
 
+    public double aggregatedPublishDelayLatencyAvg;
+    public long aggregatedPublishDelayLatency50pct;
+    public long aggregatedPublishDelayLatency75pct;
+    public long aggregatedPublishDelayLatency95pct;
+    public long aggregatedPublishDelayLatency99pct;
+    public long aggregatedPublishDelayLatency999pct;
+    public long aggregatedPublishDelayLatency9999pct;
+    public long aggregatedPublishDelayLatencyMax;
+
     public Map<Double, Double> aggregatedPublishLatencyQuantiles = new TreeMap<>();
+
+    public Map<Double, Long> aggregatedPublishDelayLatencyQuantiles = new TreeMap<>();
 
     // End to end latencies (from producer to consumer)
     // Latencies are expressed in milliseconds (without decimals)

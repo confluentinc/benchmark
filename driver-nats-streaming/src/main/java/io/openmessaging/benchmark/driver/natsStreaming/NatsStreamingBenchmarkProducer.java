@@ -1,22 +1,18 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package io.openmessaging.benchmark.driver.natsStreaming;
+
 
 import io.nats.streaming.AckHandler;
 import io.nats.streaming.StreamingConnection;
@@ -27,23 +23,28 @@ import java.util.concurrent.CompletableFuture;
 public class NatsStreamingBenchmarkProducer implements BenchmarkProducer {
     private StreamingConnection natsStreamingPublisher;
     private String topic;
-    public NatsStreamingBenchmarkProducer (StreamingConnection natsStreamingPublisher, String topic) {
+
+    public NatsStreamingBenchmarkProducer(StreamingConnection natsStreamingPublisher, String topic) {
         this.natsStreamingPublisher = natsStreamingPublisher;
         this.topic = topic;
     }
 
-    @Override public CompletableFuture<Void> sendAsync(Optional<String> key, byte[] payload) {
+    @Override
+    public CompletableFuture<Void> sendAsync(Optional<String> key, byte[] payload) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         final String[] guid = new String[1];
-        AckHandler acb = new AckHandler() {
-            @Override public void onAck(String s, Exception e) {
-               if ((e != null) || !guid[0].equals(s)) {
-                   future.completeExceptionally(e);
-               } else {
-                   future.complete(null);
-               }
-            }
-        };
+        AckHandler acb =
+                new AckHandler() {
+                    @Override
+                    public void onAck(String s, Exception e) {
+                        if ((e != null) || !guid[0].equals(s)) {
+                            future.completeExceptionally(
+                                    e != null ? e : new IllegalStateException("guid != nuid"));
+                        } else {
+                            future.complete(null);
+                        }
+                    }
+                };
         try {
             guid[0] = natsStreamingPublisher.publish(topic, payload, acb);
         } catch (Exception e) {
@@ -55,7 +56,6 @@ public class NatsStreamingBenchmarkProducer implements BenchmarkProducer {
         return future;
     }
 
-    @Override public void close() throws Exception {
-
-    }
+    @Override
+    public void close() throws Exception {}
 }
